@@ -1,0 +1,249 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description : An AWS Serverless Application for Lambda HTTP Requests
+
+Resources:
+
+  ##############################
+  ### Lamdba Functions ####
+  ##############################
+
+  ReadFromRDS:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: read-from-rds-py
+      Role: !GetAtt LambdaGetHttpsRequestRole.Arn
+      CodeUri: AWSLambdaHttpRequest/
+      Handler: app.read_from_rds
+      Runtime: python3.7
+      MemorySize: 1024
+      Timeout: 60
+      Layers:
+        - !Ref PyODBCLayer
+        - !Ref RequestsLayer
+      Environment:
+        Variables:
+          env: dev
+
+  GetHttpRequest:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: get_http_request-py
+      Role: !GetAtt LambdaGetHttpsRequestRole.Arn
+      CodeUri: AWSLambdaHttpRequest/
+      Handler: app.get_http_request
+      Runtime: python3.7
+      MemorySize: 1024
+      Timeout: 60
+      Layers:
+        - !Ref PyODBCLayer
+        - !Ref RequestsLayer
+      Environment:
+        Variables:
+          env: dev
+
+  CheckJsonArrayForElements:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: check_json_array_for_elements-py
+      Role: !GetAtt LambdaGetHttpsRequestRole.Arn
+      CodeUri: AWSLambdaHttpRequest/
+      Handler: app.check_json_array_for_elements
+      Runtime: python3.7
+      MemorySize: 256
+      Timeout: 60
+      Layers:
+        - !Ref PyODBCLayer
+        - !Ref RequestsLayer
+
+  GetFirstElementfromJsonArray:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: get_first_element_from_json_array-py
+      Role: !GetAtt LambdaGetHttpsRequestRole.Arn
+      CodeUri: AWSLambdaHttpRequest/
+      Handler: app.get_first_element_from_json_array
+      Runtime: python3.7
+      MemorySize: 256
+      Timeout: 60
+      Layers:
+        - !Ref PyODBCLayer
+        - !Ref RequestsLayer
+
+  RemoveNextElementfromJsonArray:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: remove_next_element_from_json_array-py
+      Role: !GetAtt LambdaGetHttpsRequestRole.Arn
+      CodeUri: AWSLambdaHttpRequest/
+      Handler: app.remove_next_element_from_json_array
+      Runtime: python3.7
+      MemorySize: 256
+      Timeout: 60
+      Layers:
+        - !Ref PyODBCLayer
+        - !Ref RequestsLayer
+
+  ##############################
+  ### Lamdba Layers ####
+  ##############################
+
+  PyODBCLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: PyODBCLayer
+      Description: PyODBC Library Dependency
+      ContentUri: s3://tfgm-da-lamdba/layers/PyODBCLayer.zip
+      CompatibleRuntimes:
+              - python3.7
+
+  RequestsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: RequestsLayer
+      Description: RequestsLayer Library Dependency (https://github.com/keithrozario/Klayers)
+      ContentUri: s3://tfgm-da-lamdba/layers/RequestsLayer.zip
+      CompatibleRuntimes:
+              - python3.6
+              - python3.7
+
+  ##############################
+  ### State Machines ####
+  ##############################
+
+  MyStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: invoke-lamdba-get-http-request-py
+      RoleArn: !GetAtt SegmentationStateMachineRole.Arn
+      DefinitionString:
+        Fn::Sub:
+          - |-
+            {
+              "Comment": "Will loop though array and invoke the app.get_http_request Lambda function on each iteration",
+              "StartAt": "LambdaReadfromRDS",
+              "States": {
+                "LambdaReadfromRDS": {
+                  "Type": "Task",
+                  "Resource": "${ReadFromRDSArn}",
+                  "ResultPath": "$.array-elements.elements",
+                  "OutputPath": "$.array-elements",
+                  "Next": "CheckJsonArrayForElements"
+                },
+                "CheckJsonArrayForElements": {
+                  "Type": "Task",
+                  "Resource": "${CheckJsonArrayForElementsArn}",
+                  "ResultPath": "$.check-json-array-for-elements.has_elements",
+                  "Next": "ProcessArrayElement"
+                },
+                "ProcessArrayElement": {
+                  "Type": "Choice",
+                  "Choices": [
+                    {
+                      "Variable": "$.check-json-array-for-elements.has_elements",
+                      "BooleanEquals": true,
+                      "Next": "NotEmptyArray"
+                    }
+                  ],
+                  "Default": "EmptyArray"
+                },
+                "NotEmptyArray": {
+                  "Type": "Pass",
+                  "ResultPath": "$.array-elements",
+                  "OutputPath": "$.array-elements",
+                  "Next": "GetFirstElementfromJsonArray"
+                },
+                "EmptyArray": {
+                  "Type": "Pass",
+                  "Result": "is Empty - End State Machine",
+                  "End": true
+                },
+                "GetFirstElementfromJsonArray": {
+                  "Type": "Task",
+                  "Resource": "${GetFirstElementfromJsonArrayArn}",
+                  "ResultPath": "$.attribute",
+                  "Next": "GetHttpRequest"
+                },
+                "GetHttpRequest": {
+                  "Type": "Task",
+                  "Resource": "${GetHttpRequestArn}",
+                  "ResultPath": "$.array-elements.elements",
+                  "OutputPath": "$.array-elements",
+                  "Next": "RemoveNextElementfromJsonArray"
+                },
+                "RemoveNextElementfromJsonArray": {
+                  "Type": "Task",
+                  "Resource": "${RemoveNextElementfromJsonArrayArn}",
+                  "ResultPath": "$.array-elements",
+                  "OutputPath": "$.array-elements",
+                  "Next": "CheckJsonArrayForElements"
+                }
+              }
+            }
+          -
+            ReadFromRDSArn: !GetAtt [ ReadFromRDS, Arn ]
+            GetHttpRequestArn: !GetAtt [ GetHttpRequest, Arn ]
+            CheckJsonArrayForElementsArn: !GetAtt [ CheckJsonArrayForElements, Arn ]
+            GetFirstElementfromJsonArrayArn: !GetAtt [ GetFirstElementfromJsonArray, Arn ]
+            RemoveNextElementfromJsonArrayArn: !GetAtt [ RemoveNextElementfromJsonArray, Arn ]
+
+
+  ##############################
+  ### Roles ####
+  ##############################
+
+  LambdaGetHttpsRequestRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join [ "-", [!Ref "AWS::Region", "tfgm-da-lambda-get-https-request-py"] ]
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+      - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      - arn:aws:iam::aws:policy/AWSLambdaExecute
+      Policies:
+      - PolicyName: SystemsManagerGetParameter
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: VisualEditor0
+            Effect: Allow
+            Action:
+            - ssm:GetParameterHistory
+            - ssm:GetParametersByPath
+            - ssm:GetParameters
+            - ssm:GetParameter
+            Resource: "*"
+
+  SegmentationStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join [ "-", [!Ref "AWS::Region", "tfgm-da-segmentation-state-machine-py"] ]
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - states.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+      Policies:
+      - PolicyName: StepFunctionLambdaInvoke
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            Effect: Allow
+            Action:
+            - lambda:InvokeFunction
+            Resource: "*"
