@@ -2,11 +2,11 @@ import os
 import sys
 import boto3
 import pyodbc
-from botocore.exceptions import ClientError, ParamValidationError
 import json
 import requests
 from requests.exceptions import HTTPError
 import time
+from common import Functions
 
 
 def read_from_rds(event, context):
@@ -19,13 +19,13 @@ def read_from_rds(event, context):
     print('Getting parameters from parameter store...')
 
     param = '/lambda-https-request/' + env + '/read-from-rds-ds-param'
-    ds = get_parameter(param, False)
+    ds = Functions.get_parameter(param, False)
 
     param = '/lambda-https-request/' + env + '/read-from-rds-un-param'
-    un = get_parameter(param, False)
+    un = Functions.get_parameter(param, False)
 
     param = '/lambda-https-request/' + env + '/read-from-rds-pw-param'
-    pw = get_parameter(param, True)
+    pw = Functions.get_parameter(param, True)
 
     conn = sql_server_conn(dr, ds, un, pw)
 
@@ -139,48 +139,61 @@ def get_http_request(event, context):
     print('Getting parameters from parameter store...')
 
     param = '/lambda-https-request/' + env + '/s3-bucket-param'
-    s3bucket = get_parameter(param, False)
+    s3bucket = Functions.get_parameter(param, False)
     print(f'Parameter {param} value is: {s3bucket}')
 
     param = '/lambda-https-request/' + env + '/ons-oa-lookup-url-param'
-    base_url = get_parameter(param, False)
+    base_url = Functions.get_parameter(param, False)
     print(f'Parameter {param} value is: {base_url}')
 
     try:
         event_list = json.loads(json.dumps(event, indent=4))
         attribute = event_list['attribute']
+        maxfid = 0
         print(f'Lookup attribute is: {attribute}')
+
+
+        print(f'Max FID is: {maxfid}')
         print('Building URL...')
-        url = base_url.replace('<attribute>', attribute)
+        url = base_url.replace('<attribute>', attribute).replace('<fid>', str(maxfid))
         print(f'URL: {url} built...')
         timeout = 60
-        timestr = time.strftime("%Y%m%d_%H%M%S")
+        timestr = time.strftime("%Y%m%d_%H%M%S%MS")
         filekey = attribute + '_' + timestr + '.json'
 
-        upload_files_to_s3(s3bucket, filekey, api_call(url, timeout, filekey))
+        data = json.loads(json.dumps(api_call(url, timeout, filekey), indent=4)) # returns dict
+
+        #print(type(data))
+        #print(data[:1])
+
+
+        exceeded_transfer_limit = json.dumps(data['exceededTransferLimit'])
+        print(exceeded_transfer_limit)
+        features = json.dumps(data['features'][:1], indent=4)
+
+        print(features)
+
+
+
+        #person = '{"name": "Bob", "languages": ["English", "French"]}'
+        #person_dict = json.loads(person)
+        #print(type(person_dict))
+        #print(person_dict)
+        #print(person_dict['languages'])
+
+
+        #for features in data:
+        #    for attributes in features:
+        #    print(features[:1])
+
+        #print(data)
+
+        #upload_files_to_s3(s3bucket, filekey, api_call(url, timeout, filekey))
 
         return event_list['elements']
 
     except Exception as e:
         print(e)
-
-
-def get_parameter(param, decrypt):
-
-    try:
-        ssm = boto3.client('ssm')
-        param_response = ssm.get_parameter(Name=param, WithDecryption=decrypt)['Parameter']['Value']
-
-    except ssm.exceptions.ParameterNotFound:
-        print(f'Parameter {param} not found')
-    except ParamValidationError as pve:
-        print('Parameter validation error: %s' % pve)
-    except ClientError as ce:
-        print('Unexpected error: %s' % ce)
-    else:
-        print(f'Parameter {param} found')
-
-        return param_response
 
 
 def upload_files_to_s3(s3bucket, filekey, data):
@@ -218,3 +231,5 @@ def api_call(url, timeout, filekey):
         print('API call was successful')
 
     return http_response_json
+
+
