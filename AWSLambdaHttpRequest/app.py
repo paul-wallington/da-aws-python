@@ -151,7 +151,6 @@ def get_http_request(event, context):
 
     param = '/lambda-https-request/' + env + '/timeout-param'
     timeout = int(Functions.get_parameter(param, False))
-
     print(f'Parameter {param} value is: {timeout}')
 
     try:
@@ -180,17 +179,11 @@ def get_http_request(event, context):
             print(f'URL: {url} built...')
 
             data = json.loads(json.dumps(api_call(url, timeout, filekey), indent=4, sort_keys=True))
-            # returns dict
 
             exceeded_transfer_limit = json.dumps(data['exceededTransferLimit'])
             print('Exceeded transfer limit: ' + exceeded_transfer_limit)
 
-            #features = json.dumps(data['features'][:1], indent=4, sort_keys=True)
             offset += len(data['features'])
-
-            #for attributes in data['features']:
-                #if attributes['attributes']['FID'] > maxfid:
-                    #maxfid = attributes['attributes']['FID']
 
             if counter == max_loops:
                 print('You have reached the maximum number of loops(' + str(max_loops) + ')')
