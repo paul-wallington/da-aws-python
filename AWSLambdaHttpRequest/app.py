@@ -8,7 +8,6 @@ from requests.exceptions import HTTPError
 import time
 from common import Functions
 
-
 def read_from_rds(event, context):
 
     env = os.environ['env']
@@ -146,55 +145,66 @@ def get_http_request(event, context):
     base_url = Functions.get_parameter(param, False)
     print(f'Parameter {param} value is: {base_url}')
 
+    param = '/lambda-https-request/' + env + '/max-loops-param'
+    max_loops = int(Functions.get_parameter(param, False))
+    print(f'Parameter {param} value is: {max_loops}')
+
+    param = '/lambda-https-request/' + env + '/timeout-param'
+    timeout = int(Functions.get_parameter(param, False))
+
+    print(f'Parameter {param} value is: {timeout}')
+
     try:
+        exceeded_transfer_limit = True
+        maxfid = 0
+        counter = 0
+        result_record_count = 2000
+        offset = 0
+        url_result_record_count = 'resultRecordCount=' + str(result_record_count)
         event_list = json.loads(json.dumps(event, indent=4))
         attribute = event_list['attribute']
-        maxfid = 0
         print(f'Lookup attribute is: {attribute}')
 
+        while exceeded_transfer_limit:
 
-        print(f'Max FID is: {maxfid}')
-        print('Building URL...')
-        url = base_url.replace('<attribute>', attribute).replace('<fid>', str(maxfid))
-        print(f'URL: {url} built...')
-        timeout = 60
-        timestr = time.strftime("%Y%m%d_%H%M%S%MS")
-        filekey = attribute + '_' + timestr + '.json'
+            print(f'Max FID is: {maxfid}')
 
-        data = json.loads(json.dumps(api_call(url, timeout, filekey), indent=4)) # returns dict
+            timestr = time.strftime('%Y%m%d_%H%M%S%MS')
+            filekey = attribute + '_' + timestr + '_' + str(counter) + '.json'
 
-        #print(type(data))
-        #print(data[:1])
+            print('Building URL...')
+            url_offset = 'resultOffset=' + str(offset)
+            urls = [base_url, url_offset, url_result_record_count]
+            join_urls = '&'.join(urls)
+            url = join_urls.replace('<attribute>', attribute).replace('<fid>', str(0))
+            print(f'URL: {url} built...')
 
+            data = json.loads(json.dumps(api_call(url, timeout, filekey), indent=4, sort_keys=True))
+            # returns dict
 
-        exceeded_transfer_limit = json.dumps(data['exceededTransferLimit'])
-        print(exceeded_transfer_limit)
-        features = json.dumps(data['features'][:1], indent=4)
+            exceeded_transfer_limit = json.dumps(data['exceededTransferLimit'])
+            print('Exceeded transfer limit: ' + exceeded_transfer_limit)
 
-        print(features)
+            #features = json.dumps(data['features'][:1], indent=4, sort_keys=True)
+            offset += len(data['features'])
 
+            #for attributes in data['features']:
+                #if attributes['attributes']['FID'] > maxfid:
+                    #maxfid = attributes['attributes']['FID']
 
+            if counter == max_loops:
+                print('You have reached the maximum number of loops(' + str(max_loops) + ')')
+                break
 
-        #person = '{"name": "Bob", "languages": ["English", "French"]}'
-        #person_dict = json.loads(person)
-        #print(type(person_dict))
-        #print(person_dict)
-        #print(person_dict['languages'])
+            print(str(counter))
+            counter += 1
 
-
-        #for features in data:
-        #    for attributes in features:
-        #    print(features[:1])
-
-        #print(data)
-
-        #upload_files_to_s3(s3bucket, filekey, api_call(url, timeout, filekey))
-
-        return event_list['elements']
+            upload_files_to_s3(s3bucket, filekey, api_call(url, timeout, filekey))
 
     except Exception as e:
         print(e)
 
+    return event_list['elements']
 
 def upload_files_to_s3(s3bucket, filekey, data):
 
