@@ -5,8 +5,10 @@ import pyodbc
 import json
 import requests
 from requests.exceptions import HTTPError
-import time
+#import time
+from datetime import datetime
 from common import Functions
+
 
 def read_from_rds(event, context):
 
@@ -153,11 +155,13 @@ def get_http_request(event, context):
     timeout = int(Functions.get_parameter(param, False))
     print(f'Parameter {param} value is: {timeout}')
 
+    param = '/lambda-https-request/' + env + '/result-record-count'
+    result_record_count = int(Functions.get_parameter(param, False))
+    print(f'Parameter {param} value is: {result_record_count}')
+
     try:
         exceeded_transfer_limit = True
-        maxfid = 0
         counter = 0
-        result_record_count = 2000
         offset = 0
         url_result_record_count = 'resultRecordCount=' + str(result_record_count)
         event_list = json.loads(json.dumps(event, indent=4))
@@ -166,40 +170,64 @@ def get_http_request(event, context):
 
         while exceeded_transfer_limit:
 
-            print(f'Max FID is: {maxfid}')
-
-            timestr = time.strftime('%Y%m%d_%H%M%S%MS')
-            filekey = attribute + '_' + timestr + '_' + str(counter) + '.json'
+            curr_datetime = datetime.now()
+            curr_datetime_str = curr_datetime.strftime('%Y%m%d_%H%M%S%f')
+            filekey = attribute + '_' + curr_datetime_str + '_' + str(counter) + '.json'
 
             print('Building URL...')
             url_offset = 'resultOffset=' + str(offset)
             urls = [base_url, url_offset, url_result_record_count]
             join_urls = '&'.join(urls)
-            url = join_urls.replace('<attribute>', attribute).replace('<fid>', str(0))
+            url = join_urls.replace('<attribute>', attribute)
             print(f'URL: {url} built...')
 
             data = json.loads(json.dumps(api_call(url, timeout, filekey), indent=4, sort_keys=True))
 
-            exceeded_transfer_limit = json.dumps(data['exceededTransferLimit'])
-            print('Exceeded transfer limit: ' + exceeded_transfer_limit)
+            print('got here')
+            print(len(data['features']))
 
-            offset += len(data['features'])
+            if data.get('exceededTransferLimit'):
+                exceeded_transfer_limit = json.dumps(data['exceededTransferLimit'])
+                print(exceeded_transfer_limit)
+                if data.get('features'):
+                    print('We have features')
+                    offset += len(data['features'])
+                else:
+                    print('Json data does not contain features objects')
+                    break
+            else:
+
+                offset = 0
+                print('got here 2')
+                exceeded_transfer_limit = False
+                print(exceeded_transfer_limit)
+                if data.get('features'):
+                    print('We have features')
+                else:
+                    print('Json data does not contain features objects')
+                    break
+
+                print('got here 3')
+
+            #print('Exceeded transfer limit: ' + str(exceeded_transfer_limit))
+
+            print('got here 4')
 
             if counter == max_loops:
                 print('You have reached the maximum number of loops(' + str(max_loops) + ')')
                 break
 
-            print(str(counter))
             counter += 1
 
-            upload_files_to_s3(s3bucket, filekey, api_call(url, timeout, filekey))
+            upload_file_to_s3(s3bucket, filekey, data)
 
     except Exception as e:
         print(e)
 
     return event_list['elements']
 
-def upload_files_to_s3(s3bucket, filekey, data):
+
+def upload_file_to_s3(s3bucket, filekey, data):
 
     try:
         s3 = boto3.resource('s3')

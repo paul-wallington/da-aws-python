@@ -34,7 +34,7 @@ Resources:
       Handler: app.get_http_request
       Runtime: python3.7
       MemorySize: 1024
-      Timeout: 60
+      Timeout: 90
       Layers:
         - !Ref PyODBCLayer
         - !Ref RequestsLayer
