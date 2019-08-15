@@ -25,16 +25,16 @@ Resources:
         Variables:
           env: dev
 
-  GetHttpRequest:
+  GetOnsOaHttpRequest:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: get_http_request-py
+      FunctionName: get_ons_oa_http_request-py
       Role: !GetAtt LambdaGetHttpsRequestRole.Arn
       CodeUri: AWSLambdaHttpRequest/
-      Handler: app.get_http_request
+      Handler: app.get_ons_oa_http_request
       Runtime: python3.7
       MemorySize: 1024
-      Timeout: 90
+      Timeout: 320
       Layers:
         - !Ref PyODBCLayer
         - !Ref RequestsLayer
@@ -77,6 +77,20 @@ Resources:
       Role: !GetAtt LambdaGetHttpsRequestRole.Arn
       CodeUri: AWSLambdaHttpRequest/
       Handler: app.remove_next_element_from_json_array
+      Runtime: python3.7
+      MemorySize: 256
+      Timeout: 60
+      Layers:
+        - !Ref PyODBCLayer
+        - !Ref RequestsLayer
+
+  SnowflakeValidate:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: snowflake_validate-py
+      Role: !GetAtt LambdaGetHttpsRequestRole.Arn
+      CodeUri: AWSLambdaHttpRequest/
+      Handler: app.snowflake_validate
       Runtime: python3.7
       MemorySize: 256
       Timeout: 60
@@ -162,11 +176,11 @@ Resources:
                   "Type": "Task",
                   "Resource": "${GetFirstElementfromJsonArrayArn}",
                   "ResultPath": "$.attribute",
-                  "Next": "GetHttpRequest"
+                  "Next": "GetOnsOaHttpRequest"
                 },
-                "GetHttpRequest": {
+                "GetOnsOaHttpRequest": {
                   "Type": "Task",
-                  "Resource": "${GetHttpRequestArn}",
+                  "Resource": "${GetOnsOaHttpRequestArn}",
                   "ResultPath": "$.array-elements.elements",
                   "OutputPath": "$.array-elements",
                   "Next": "RemoveNextElementfromJsonArray"
@@ -182,7 +196,7 @@ Resources:
             }
           -
             ReadFromRDSArn: !GetAtt [ ReadFromRDS, Arn ]
-            GetHttpRequestArn: !GetAtt [ GetHttpRequest, Arn ]
+            GetOnsOaHttpRequestArn: !GetAtt [ GetOnsOaHttpRequest, Arn ]
             CheckJsonArrayForElementsArn: !GetAtt [ CheckJsonArrayForElements, Arn ]
             GetFirstElementfromJsonArrayArn: !GetAtt [ GetFirstElementfromJsonArray, Arn ]
             RemoveNextElementfromJsonArrayArn: !GetAtt [ RemoveNextElementfromJsonArray, Arn ]

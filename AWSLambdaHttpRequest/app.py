@@ -1,13 +1,8 @@
 import os
-import sys
-import boto3
-import pyodbc
 import json
-import requests
-from requests.exceptions import HTTPError
-#import time
 from datetime import datetime
 from common import Functions
+import snowflake.connector
 
 
 def read_from_rds(event, context):
@@ -28,7 +23,7 @@ def read_from_rds(event, context):
     param = '/lambda-https-request/' + env + '/read-from-rds-pw-param'
     pw = Functions.get_parameter(param, True)
 
-    conn = sql_server_conn(dr, ds, un, pw)
+    conn = Functions.sql_server_conn(dr, ds, un, pw)
 
     with conn:
         with conn.cursor() as cur:
@@ -43,21 +38,6 @@ def read_from_rds(event, context):
                 row_dict = json.loads((row[0]))
                 print('Input json...' + row[0])
                 return row_dict
-
-
-def sql_server_conn(dr, ds, un, pw):
-
-    try:
-        print('Building sql connection...')
-        print(f'Attempting to connect to {ds}...')
-        conn = pyodbc.connect('DRIVER={%s};SERVER=%s;DATABASE=AWSAdmin;UID=%s;PWD=%s' % (dr, ds, un, pw))
-
-    except pyodbc.Error as ex:
-        sqlstate = ex.args[1]
-        print(sqlstate)
-        sys.exit()
-
-    return conn
 
 
 def check_json_array_for_elements(event, context):
@@ -132,7 +112,7 @@ def remove_next_element_from_json_array(event, context):
         print(e)
 
 
-def get_http_request(event, context):
+def get_ons_oa_http_request(event, context):
 
     env = os.environ['env']
     print(f'Setting environment to {env}...')
@@ -159,9 +139,14 @@ def get_http_request(event, context):
     result_record_count = int(Functions.get_parameter(param, False))
     print(f'Parameter {param} value is: {result_record_count}')
 
+    param = '/lambda-https-request/' + env + '/max-error-loops-param'
+    max_error_loops = int(Functions.get_parameter(param, False))
+    print(f'Parameter {param} value is: {max_error_loops}')
+
     try:
         exceeded_transfer_limit = True
-        counter = 0
+        counter = 1
+        error_counter = 1
         offset = 0
         url_result_record_count = 'resultRecordCount=' + str(result_record_count)
         event_list = json.loads(json.dumps(event, indent=4))
@@ -181,45 +166,39 @@ def get_http_request(event, context):
             url = join_urls.replace('<attribute>', attribute)
             print(f'URL: {url} built...')
 
-            data = json.loads(json.dumps(api_call(url, timeout, filekey), indent=4, sort_keys=True))
-
-            print('got here')
-            print(len(data['features']))
+            while error_counter < max_error_loops:
+                print('Attempting to load api (' + str(error_counter) + ') of (' + str(max_error_loops) + ')...')
+                data = Functions.load_api(filekey, timeout, url)
+                if data.get('error'):
+                    print(f'API returned error message: {data}')
+                else:
+                    break
+                error_counter += 1
+                if error_counter == max_error_loops:
+                    print('You have reached the maximum number of error loops (' + str(max_error_loops) + ')')
+                    break
 
             if data.get('exceededTransferLimit'):
                 exceeded_transfer_limit = json.dumps(data['exceededTransferLimit'])
-                print(exceeded_transfer_limit)
-                if data.get('features'):
-                    print('We have features')
-                    offset += len(data['features'])
-                else:
-                    print('Json data does not contain features objects')
-                    break
             else:
-
-                offset = 0
-                print('got here 2')
                 exceeded_transfer_limit = False
-                print(exceeded_transfer_limit)
-                if data.get('features'):
-                    print('We have features')
-                else:
-                    print('Json data does not contain features objects')
-                    break
+                offset = 0
 
-                print('got here 3')
-
-            #print('Exceeded transfer limit: ' + str(exceeded_transfer_limit))
-
-            print('got here 4')
+            if data.get('features'):
+                number_of_features = len(data['features'])
+                offset += number_of_features
+                print(f'Json string for {attribute} loop {counter} contains {number_of_features} features')
+            else:
+                print('Json data does not contain features objects')
+                break
 
             if counter == max_loops:
-                print('You have reached the maximum number of loops(' + str(max_loops) + ')')
+                print('You have reached the maximum number of loops (' + str(max_loops) + ')')
                 break
 
             counter += 1
 
-            upload_file_to_s3(s3bucket, filekey, data)
+            Functions.upload_file_to_s3(s3bucket, filekey, data)
 
     except Exception as e:
         print(e)
@@ -227,40 +206,38 @@ def get_http_request(event, context):
     return event_list['elements']
 
 
-def upload_file_to_s3(s3bucket, filekey, data):
+def snowflake_validate(event, context):
 
-    try:
-        s3 = boto3.resource('s3')
-        print(f'Uploading file {filekey} to {s3bucket}...')
-        response = s3.Object(s3bucket, filekey).put(Body=json.dumps(data))
-        if response['ResponseMetadata']['HTTPStatusCode'] != 200:
-            raise Exception('s3 upload failed with code: {}'.format(response['ResponseMetadata']['HTTPStatusCode']))
-        else:
-            print(f'file {filekey} uploaded successfully to {s3bucket}')
-            return {'statusCode': 200, 'body': response}
-        return
+    env = os.environ['env']
 
-    except Exception as e:
-        print(e)
+    print('Getting parameters from parameter store...')
+
+    param = '/snowflake/' + env + '/ac-param'
+    ac = Functions.get_parameter(param, False)
+
+    param = '/snowflake/' + env + '/un-param'
+    un = Functions.get_parameter(param, False)
+
+    param = '/snowflake/' + env + '/pw-param'
+    pw = Functions.get_parameter(param, True)
+
+    # connect to snowflake data warehouse
+    conn = snowflake.connector.connect(
+        account=ac,
+        user=un,
+        password=pw
+    )
+
+    sql = "SELECT current_version()"
+
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            one_row = cur.fetchone()
+            print(one_row[0])
 
 
-def api_call(url, timeout, filekey):
 
-    try:
-        print('Calling API...')
-        http_response = requests.get(url=url, timeout=timeout)
-        print('Adding filekey to json file...')
-        http_response_json = http_response.json()
-        http_response_json['fileKey'] = filekey
-        http_response.raise_for_status()
 
-    except HTTPError as http_err:
-        print(f'HTTP error occurred: {http_err}')
-    except Exception as err:
-        print(f'Other error occurred: {err}')
-    else:
-        print('API call was successful')
-
-    return http_response_json
 
 
