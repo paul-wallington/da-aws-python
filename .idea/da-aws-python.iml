@@ -7,6 +7,9 @@
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
+  <component name="PackageRequirementsSettings">
+    <option name="requirementsPath" value="E:\Git\da-aws-python\requirements.txt" />
+  </component>
   <component name="TestRunnerService">
     <option name="PROJECT_TEST_RUNNER" value="Unittests" />
   </component>
@@ -27,7 +30,7 @@
             <DeploySamConfig>
               <option name="autoExecute" value="true" />
               <option name="bucketName" value="tfgm-da-lamdba" />
-              <option name="stackName" value="lamdba-http-request-py" />
+              <option name="stackName" value="lambda-http-request-pycharm" />
             </DeploySamConfig>
           </value>
         </entry>

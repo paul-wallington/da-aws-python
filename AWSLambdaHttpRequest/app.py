@@ -209,6 +209,7 @@ def get_ons_oa_http_request(event, context):
 def snowflake_validate(event, context):
 
     env = os.environ['env']
+    print('Setting environment to ' + env + '...')
 
     print('Getting parameters from parameter store...')
 
@@ -235,9 +236,3 @@ def snowflake_validate(event, context):
             cur.execute(sql)
             one_row = cur.fetchone()
             print(one_row[0])
-
-
-
-
-
-

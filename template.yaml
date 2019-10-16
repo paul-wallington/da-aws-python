@@ -5,6 +5,32 @@ Description : An AWS Serverless Application for Lambda HTTP Requests
 Resources:
 
   ##############################
+  ### Lamdba Layers ####
+  ##############################
+
+  PyODBCLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: PyODBCLayer
+      Description: PyODBC Library Dependency
+      ContentUri: s3://tfgm-da-lamdba/layers/PyODBCLayer.zip
+      #ContentUri:
+      #    Bucket: !Ref LayerDeployBucket
+      #    Key: !Ref LayerDeployKey
+      CompatibleRuntimes:
+              - python3.7
+
+  RequestsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: RequestsLayer
+      Description: RequestsLayer Library Dependency (https://github.com/keithrozario/Klayers)
+      ContentUri: s3://tfgm-da-lamdba/layers/RequestsLayer.zip
+      CompatibleRuntimes:
+              - python3.6
+              - python3.7
+
+  ##############################
   ### Lamdba Functions ####
   ##############################
 
@@ -28,7 +54,7 @@ Resources:
   GetOnsOaHttpRequest:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: get_ons_oa_http_request-py
+      FunctionName: get-ons-oa-http-request-py
       Role: !GetAtt LambdaGetHttpsRequestRole.Arn
       CodeUri: AWSLambdaHttpRequest/
       Handler: app.get_ons_oa_http_request
@@ -45,7 +71,7 @@ Resources:
   CheckJsonArrayForElements:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: check_json_array_for_elements-py
+      FunctionName: check-json-array-for-elements-py
       Role: !GetAtt LambdaGetHttpsRequestRole.Arn
       CodeUri: AWSLambdaHttpRequest/
       Handler: app.check_json_array_for_elements
@@ -59,7 +85,7 @@ Resources:
   GetFirstElementfromJsonArray:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: get_first_element_from_json_array-py
+      FunctionName: get-first-element-from-json-array-py
       Role: !GetAtt LambdaGetHttpsRequestRole.Arn
       CodeUri: AWSLambdaHttpRequest/
       Handler: app.get_first_element_from_json_array
@@ -73,7 +99,7 @@ Resources:
   RemoveNextElementfromJsonArray:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: remove_next_element_from_json_array-py
+      FunctionName: remove-next-element-from-json-array-py
       Role: !GetAtt LambdaGetHttpsRequestRole.Arn
       CodeUri: AWSLambdaHttpRequest/
       Handler: app.remove_next_element_from_json_array
@@ -92,34 +118,14 @@ Resources:
       CodeUri: AWSLambdaHttpRequest/
       Handler: app.snowflake_validate
       Runtime: python3.7
-      MemorySize: 256
+      MemorySize: 1024
       Timeout: 60
       Layers:
         - !Ref PyODBCLayer
         - !Ref RequestsLayer
-
-  ##############################
-  ### Lamdba Layers ####
-  ##############################
-
-  PyODBCLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: PyODBCLayer
-      Description: PyODBC Library Dependency
-      ContentUri: s3://tfgm-da-lamdba/layers/PyODBCLayer.zip
-      CompatibleRuntimes:
-              - python3.7
-
-  RequestsLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: RequestsLayer
-      Description: RequestsLayer Library Dependency (https://github.com/keithrozario/Klayers)
-      ContentUri: s3://tfgm-da-lamdba/layers/RequestsLayer.zip
-      CompatibleRuntimes:
-              - python3.6
-              - python3.7
+      Environment:
+        Variables:
+          env: dev
 
   ##############################
   ### State Machines ####
@@ -203,7 +209,7 @@ Resources:
 
 
   ##############################
-  ### Roles ####
+  ### Policies and Roles ####
   ##############################
 
   LambdaGetHttpsRequestRole:
@@ -261,3 +267,64 @@ Resources:
             Action:
             - lambda:InvokeFunction
             Resource: "*"
+
+  ### https://docs:snowflake:
+  ###    net/manuals/user-guide/data-load-s3-config:
+  ###      html#option-1-configuring-a-snowflake-storage-integration:
+
+  SnowflakeS3StagePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Join [ "-", [!Ref "AWS::Region", "tfgm-da-snowflake-s3-stage-policy"] ]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Action:
+            - "s3:PutObject"
+            - "s3:GetObject"
+            - "s3:DeleteObjectVersion"
+            - "s3:DeleteObject"
+            - "s3:GetObjectVersion"
+          Resource:
+            - "arn:aws:s3:::tfgm-da-segmentation-postcode-output-area/*"
+            - "arn:aws:s3:::tfgm-da-segmentation-output-area-polygon/*"
+        - Effect: "Allow"
+          Action:
+            - "s3:ListBucket"
+          Resource:
+            - "arn:aws:s3:::tfgm-da-segmentation-postcode-output-area/*"
+            - "arn:aws:s3:::tfgm-da-segmentation-output-area-polygon/*"
+          Condition:
+            StringLike:
+              s3:prefix:
+              - "*"
+
+  #SnowflakeS3Role:
+#    Type: AWS::IAM::Role
+#    Properties:
+#      RoleName: !Join [ "-", [!Ref "AWS::Region", "tfgm-da-snowflake-s3-role"] ]
+#      AssumeRolePolicyDocument:
+        #Version: "2012-10-17"
+        #Statement:
+        #- Effect: Allow
+        #  Principal:
+        #    Service:
+        #    - s3.amazonaws.com
+        #  Action:
+        #  - sts:AssumeRole
+#        Version: '2012-10-17'
+#        Statement:
+#        - Sid: ''
+#          Effect: Allow
+#          Principal:
+#            AWS: !Ref SnowflakeUserARN
+#          Action: sts:AssumeRole
+#          Condition:
+#            StringEquals:
+#              sts:ExternalId: !Ref SnowflakeExternalID
+#      ManagedPolicyArns:
+#        - !Ref SnowflakeS3StagePolicy
+
+
+
