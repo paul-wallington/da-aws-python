@@ -2,6 +2,31 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description : An AWS Serverless Application for Lambda HTTP Requests
 
+##############################
+### Parameters ####
+##############################
+
+#"Parameters" : {
+#  "SnowflakeUserARN" : {
+#    "Type" : "String",
+#    "Default" : "snowflake_user_arn",
+#    "Description" : "User ARN for Snowflake Trust Relationship"
+#  },
+#  "SnowflakeExternalID" : {
+#    "Type" : "String",
+#    "Default" : "snowflake_external_id",
+#    "Description" : "External ID for Snowflake Trust Relationship"
+#  },
+#  "LayerDeployBucket" : {
+#     "Type" : "String",
+#     "Default": "tfgm-da-lamdba"
+#  },
+#  "LayerDeployKey" : {
+#     "Type" : "String",
+#     "Default" : "layers/PyODBCLayer.zip"
+#  }
+#}
+
 Resources:
 
   ##############################
@@ -110,22 +135,22 @@ Resources:
         - !Ref PyODBCLayer
         - !Ref RequestsLayer
 
-  SnowflakeValidate:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: snowflake_validate-py
-      Role: !GetAtt LambdaGetHttpsRequestRole.Arn
-      CodeUri: AWSLambdaHttpRequest/
-      Handler: app.snowflake_validate
-      Runtime: python3.7
-      MemorySize: 1024
-      Timeout: 60
-      Layers:
-        - !Ref PyODBCLayer
-        - !Ref RequestsLayer
-      Environment:
-        Variables:
-          env: dev
+#  SnowflakeValidate:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      FunctionName: snowflake_validate-py
+#      Role: !GetAtt LambdaGetHttpsRequestRole.Arn
+#      CodeUri: AWSLambdaHttpRequest/
+#      Handler: app.snowflake_validate
+#      Runtime: python3.7
+#      MemorySize: 1024
+#      Timeout: 60
+#      Layers:
+#        - !Ref PyODBCLayer
+#        - !Ref RequestsLayer
+#      Environment:
+#        Variables:
+#          env: dev
 
   ##############################
   ### State Machines ####

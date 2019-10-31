@@ -2,7 +2,7 @@ import os
 import json
 from datetime import datetime
 from common import Functions
-import snowflake.connector
+#import snowflake.connector
 
 
 def read_from_rds(event, context):
@@ -205,34 +205,34 @@ def get_ons_oa_http_request(event, context):
 
     return event_list['elements']
 
+#
+#def snowflake_validate(event, context):
 
-def snowflake_validate(event, context):
+#    env = os.environ['env']
+#    print('Setting environment to ' + env + '...')
 
-    env = os.environ['env']
-    print('Setting environment to ' + env + '...')
+#    print('Getting parameters from parameter store...')
 
-    print('Getting parameters from parameter store...')
+#    param = '/snowflake/' + env + '/ac-param'
+#    ac = Functions.get_parameter(param, False)
 
-    param = '/snowflake/' + env + '/ac-param'
-    ac = Functions.get_parameter(param, False)
+#    param = '/snowflake/' + env + '/un-param'
+#    un = Functions.get_parameter(param, False)
 
-    param = '/snowflake/' + env + '/un-param'
-    un = Functions.get_parameter(param, False)
+#    param = '/snowflake/' + env + '/pw-param'
+#    pw = Functions.get_parameter(param, True)
 
-    param = '/snowflake/' + env + '/pw-param'
-    pw = Functions.get_parameter(param, True)
+#    # connect to snowflake data warehouse
+#    conn = snowflake.connector.connect(
+#        account=ac,
+#        user=un,
+#        password=pw
+#    )
 
-    # connect to snowflake data warehouse
-    conn = snowflake.connector.connect(
-        account=ac,
-        user=un,
-        password=pw
-    )
+#    sql = "SELECT current_version()"
 
-    sql = "SELECT current_version()"
-
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(sql)
-            one_row = cur.fetchone()
-            print(one_row[0])
+#    with conn:
+#        with conn.cursor() as cur:
+#            cur.execute(sql)
+#            one_row = cur.fetchone()
+#            print(one_row[0])

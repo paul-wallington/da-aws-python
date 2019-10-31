@@ -1,9 +1,11 @@
 import boto3
 from botocore.exceptions import ClientError, ParamValidationError
+# Requirement.txt value not needed as requests is referenced from Layer. Requirement ignored
 import requests
 from requests.exceptions import HTTPError
 import json
 import sys
+# Requirement.txt value  not needed as pyodbc is referenced from Layer. Requirement ignored
 import pyodbc
 
 

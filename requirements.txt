@@ -1,5 +1,0 @@
-pysnowflake
-pyodbc
-requests
-botocore
-boto3
